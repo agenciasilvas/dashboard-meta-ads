@@ -364,6 +364,101 @@
   .spin { animation: spin .8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  /* ─── DATE PICKER ───────────────────────────── */
+  .dp-wrap { position: relative; }
+  .dp-trigger {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 14px; border-radius: var(--radius-sm);
+    background: var(--bg); border: 1px solid var(--border);
+    cursor: pointer; font-size: 13px; font-weight: 600;
+    color: var(--text); transition: .15s; white-space: nowrap;
+  }
+  .dp-trigger:hover { background: #E8EAEF; }
+  .dp-trigger svg { width: 15px; height: 15px; color: var(--blue); flex-shrink: 0; }
+  .dp-trigger .chevron { color: var(--text-secondary); }
+
+  .dp-panel {
+    display: none; position: absolute; top: calc(100% + 8px); right: 0;
+    background: var(--white); border: 1px solid var(--border);
+    border-radius: var(--radius); box-shadow: 0 8px 40px rgba(0,0,0,0.14);
+    z-index: 300; width: 720px; max-width: 96vw;
+    flex-direction: row; overflow: hidden;
+  }
+  .dp-panel.open { display: flex; }
+
+  .dp-presets {
+    width: 168px; flex-shrink: 0;
+    border-right: 1px solid var(--border);
+    padding: 10px 0; overflow-y: auto; max-height: 420px;
+  }
+  .dp-preset {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 16px; cursor: pointer; font-size: 13px;
+    color: var(--text); transition: background .1s;
+  }
+  .dp-preset:hover { background: #F4F5FF; }
+  .dp-preset.active { background: var(--blue-light); color: var(--blue); font-weight: 600; }
+  .dp-preset .dp-radio {
+    width: 16px; height: 16px; border-radius: 50%;
+    border: 2px solid var(--border); flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    transition: border-color .15s;
+  }
+  .dp-preset.active .dp-radio { border-color: var(--blue); }
+  .dp-preset.active .dp-radio::after {
+    content: ''; width: 8px; height: 8px;
+    background: var(--blue); border-radius: 50%;
+  }
+
+  .dp-main { flex: 1; display: flex; flex-direction: column; }
+  .dp-calendars { display: flex; gap: 0; padding: 16px 20px 8px; flex: 1; }
+  .dp-cal { flex: 1; }
+  .dp-cal + .dp-cal { margin-left: 16px; padding-left: 16px; border-left: 1px solid var(--border); }
+
+  .dp-cal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .dp-cal-title { font-size: 13px; font-weight: 700; color: var(--text); }
+  .dp-nav {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: none; border: 1px solid var(--border);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    color: var(--text-secondary); transition: .15s;
+  }
+  .dp-nav:hover { background: var(--bg); color: var(--text); }
+  .dp-nav svg { width: 14px; height: 14px; }
+
+  .dp-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+  .dp-dow {
+    text-align: center; font-size: 11px; font-weight: 700;
+    color: var(--text-secondary); padding: 4px 0; text-transform: uppercase;
+  }
+  .dp-day {
+    text-align: center; font-size: 13px; padding: 7px 4px;
+    border-radius: 8px; cursor: pointer; transition: .1s;
+    color: var(--text); line-height: 1;
+  }
+  .dp-day:hover:not(.dp-empty):not(.dp-disabled) { background: var(--blue-light); color: var(--blue); }
+  .dp-day.dp-empty { cursor: default; }
+  .dp-day.dp-disabled { color: #C5C8D0; cursor: default; }
+  .dp-day.dp-in-range { background: #EEF2FF; border-radius: 0; }
+  .dp-day.dp-range-start, .dp-day.dp-range-end {
+    background: var(--blue); color: white; font-weight: 700; border-radius: 8px;
+  }
+  .dp-day.dp-today:not(.dp-range-start):not(.dp-range-end) {
+    font-weight: 700; color: var(--blue);
+  }
+
+  .dp-footer {
+    padding: 12px 20px; border-top: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+  }
+  .dp-label-range {
+    font-size: 12px; color: var(--text-secondary); margin-right: auto;
+  }
+  .dp-label-range strong { color: var(--text); }
+
   /* ─── SCROLLBAR ─────────────────────────────── */
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -463,12 +558,33 @@
       <div class="topbar-sub" id="syncLabel">Dados: 18–21/06/2026</div>
     </div>
     <div class="topbar-right">
-      <div class="date-range">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-        <input type="date" id="dateFrom" onchange="render()">
-        <span>–</span>
-        <input type="date" id="dateTo" onchange="render()">
+      <!-- DATE PICKER -->
+      <div class="dp-wrap" id="dpWrap">
+        <button class="dp-trigger" id="dpTrigger" onclick="dpToggle()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          <span id="dpTriggerLabel">Selecionar período</span>
+          <svg class="chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="dp-panel" id="dpPanel" onclick="event.stopPropagation()">
+          <!-- Presets -->
+          <div class="dp-presets" id="dpPresets"></div>
+          <!-- Calendars + footer -->
+          <div class="dp-main">
+            <div class="dp-calendars">
+              <div class="dp-cal" id="dpCal0"></div>
+              <div class="dp-cal" id="dpCal1"></div>
+            </div>
+            <div class="dp-footer">
+              <span class="dp-label-range" id="dpLabelRange"></span>
+              <button class="btn btn-ghost" onclick="dpCancel()">Cancelar</button>
+              <button class="btn btn-primary" onclick="dpApply()">Atualizar</button>
+            </div>
+          </div>
+        </div>
       </div>
+      <!-- hidden inputs for compatibility -->
+      <input type="hidden" id="dateFrom">
+      <input type="hidden" id="dateTo">
       <button class="btn btn-ghost" onclick="openConfig()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
         Configurar
@@ -1033,12 +1149,219 @@ function esc(s) {
 }
 
 // ============================================================
+// DATE PICKER
+// ============================================================
+const PRESETS = [
+  { label: "Hoje",           fn: () => { const d = today(); return [d, d]; } },
+  { label: "Ontem",          fn: () => { const d = addDays(today(), -1); return [d, d]; } },
+  { label: "Hoje e ontem",   fn: () => [addDays(today(), -1), today()] },
+  { label: "Últimos 7 dias", fn: () => [addDays(today(), -6), today()] },
+  { label: "Últimos 14 dias",fn: () => [addDays(today(), -13), today()] },
+  { label: "Últimos 28 dias",fn: () => [addDays(today(), -27), today()] },
+  { label: "Últimos 30 dias",fn: () => [addDays(today(), -29), today()] },
+  { label: "Esta semana",    fn: () => { const d = new Date(today()); d.setDate(d.getDate() - d.getDay() + 1); return [fmt(d), today()]; } },
+  { label: "Semana passada", fn: () => { const d = new Date(today()); const dow = d.getDay()||7; d.setDate(d.getDate()-dow-6); const e = new Date(d); e.setDate(e.getDate()+6); return [fmt(d), fmt(e)]; } },
+  { label: "Este mês",       fn: () => { const d = new Date(today()); d.setDate(1); return [fmt(d), today()]; } },
+  { label: "Mês passado",    fn: () => { const d = new Date(today()); d.setDate(0); const e = fmt(d); d.setDate(1); return [fmt(d), e]; } },
+  { label: "Máximo",         fn: () => { const all = state.meta.map(r=>r[0]).sort(); return all.length ? [all[0], all[all.length-1]] : [today(), today()]; } },
+  { label: "Personalizado",  fn: null },
+];
+
+const MONTHS_PT = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+const DAYS_PT   = ["Seg","Ter","Qua","Qui","Sex","Sáb","Dom"];
+
+function today() { return fmt(new Date()); }
+function fmt(d) { return d.toISOString().slice(0,10); }
+function addDays(iso, n) { const d = new Date(iso); d.setDate(d.getDate()+n); return fmt(d); }
+function parseISO(s) { const [y,m,d] = s.split("-"); return new Date(+y, +m-1, +d); }
+function fmtDisplay(iso) {
+  if (!iso) return "—";
+  const d = parseISO(iso);
+  return d.getDate().toString().padStart(2,"0") + "/" + (d.getMonth()+1).toString().padStart(2,"0") + "/" + d.getFullYear();
+}
+
+let dp = {
+  open: false,
+  leftMonth: null,   // {year, month}
+  tempStart: null,
+  tempEnd: null,
+  selecting: false,  // true = waiting for end date click
+  activePreset: null,
+};
+
+function dpInit(from, to) {
+  const d = from ? parseISO(from) : new Date();
+  dp.leftMonth = { year: d.getFullYear(), month: d.getMonth() };
+  dp.tempStart = from || null;
+  dp.tempEnd   = to   || null;
+  dp.selecting = false;
+  dp.activePreset = null;
+  dpDetectPreset();
+}
+
+function dpDetectPreset() {
+  const from = document.getElementById("dateFrom").value;
+  const to   = document.getElementById("dateTo").value;
+  dp.activePreset = null;
+  PRESETS.forEach((p,i) => {
+    if (!p.fn) return;
+    const [a,b] = p.fn();
+    if (a === from && b === to) dp.activePreset = i;
+  });
+  if (dp.activePreset === null && from && to) dp.activePreset = 12; // Personalizado
+}
+
+function dpToggle() {
+  dp.open = !dp.open;
+  document.getElementById("dpPanel").classList.toggle("open", dp.open);
+  if (dp.open) {
+    dpInit(document.getElementById("dateFrom").value, document.getElementById("dateTo").value);
+    dpRender();
+    // Close on outside click
+    setTimeout(() => document.addEventListener("click", dpOutside), 0);
+  } else {
+    document.removeEventListener("click", dpOutside);
+  }
+}
+
+function dpOutside(e) {
+  if (!document.getElementById("dpWrap").contains(e.target)) dpCancel();
+}
+
+function dpCancel() {
+  dp.open = false;
+  document.getElementById("dpPanel").classList.remove("open");
+  document.removeEventListener("click", dpOutside);
+}
+
+function dpApply() {
+  if (!dp.tempStart) return;
+  const from = dp.tempStart < (dp.tempEnd||dp.tempStart) ? dp.tempStart : (dp.tempEnd||dp.tempStart);
+  const to   = dp.tempStart < (dp.tempEnd||dp.tempStart) ? (dp.tempEnd||dp.tempStart) : dp.tempStart;
+  document.getElementById("dateFrom").value = from;
+  document.getElementById("dateTo").value   = to;
+  updateTriggerLabel(from, to);
+  dpCancel();
+  render();
+}
+
+function updateTriggerLabel(from, to) {
+  const label = from === to
+    ? fmtDisplay(from)
+    : fmtDisplay(from) + " – " + fmtDisplay(to);
+  document.getElementById("dpTriggerLabel").textContent = label;
+}
+
+function dpSelectPreset(idx) {
+  dp.activePreset = idx;
+  const preset = PRESETS[idx];
+  if (!preset.fn) { dpRender(); return; } // Personalizado: só marca, usuário clica no cal
+  const [a, b] = preset.fn();
+  dp.tempStart = a; dp.tempEnd = b; dp.selecting = false;
+  const d = parseISO(a);
+  dp.leftMonth = { year: d.getFullYear(), month: d.getMonth() };
+  dpRender();
+}
+
+function dpClickDay(iso) {
+  if (!dp.selecting || !dp.tempStart) {
+    dp.tempStart = iso; dp.tempEnd = null; dp.selecting = true;
+    dp.activePreset = 12; // Personalizado
+  } else {
+    if (iso < dp.tempStart) { dp.tempEnd = dp.tempStart; dp.tempStart = iso; }
+    else { dp.tempEnd = iso; }
+    dp.selecting = false;
+    dp.activePreset = null;
+    dpDetectPreset();
+  }
+  dpRender();
+}
+
+function dpNav(dir) {
+  dp.leftMonth.month += dir;
+  if (dp.leftMonth.month > 11) { dp.leftMonth.month = 0; dp.leftMonth.year++; }
+  if (dp.leftMonth.month < 0)  { dp.leftMonth.month = 11; dp.leftMonth.year--; }
+  dpRender();
+}
+
+function dpRender() {
+  // Presets
+  const presetsEl = document.getElementById("dpPresets");
+  presetsEl.innerHTML = PRESETS.map((p,i) => `
+    <div class="dp-preset ${dp.activePreset===i?'active':''}" onclick="dpSelectPreset(${i})">
+      <div class="dp-radio"></div>${p.label}
+    </div>`).join("");
+
+  // Two months
+  const right = { year: dp.leftMonth.year, month: dp.leftMonth.month + 1 };
+  if (right.month > 11) { right.month = 0; right.year++; }
+  renderCalMonth("dpCal0", dp.leftMonth.year, dp.leftMonth.month, true);
+  renderCalMonth("dpCal1", right.year, right.month, false);
+
+  // Footer label
+  const from = dp.tempStart, to = dp.tempEnd || dp.tempStart;
+  const label = (from && to)
+    ? `<strong>${fmtDisplay(from)}</strong> – <strong>${fmtDisplay(to || from)}</strong>`
+    : "Selecione um período";
+  document.getElementById("dpLabelRange").innerHTML = label;
+}
+
+function renderCalMonth(elId, year, month, showPrev) {
+  const el = document.getElementById(elId);
+  const todayISO = today();
+  const firstDay = new Date(year, month, 1).getDay(); // 0=Sun
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  // Convert Sunday=0 to Monday-based offset
+  const offset = (firstDay === 0) ? 6 : firstDay - 1;
+
+  const from = dp.tempStart, to = dp.tempEnd || (dp.selecting ? null : dp.tempStart);
+
+  let html = `<div class="dp-cal-header">`;
+  if (showPrev) {
+    html += `<button class="dp-nav" onclick="dpNav(-1)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg></button>`;
+  } else { html += `<div style="width:28px"></div>`; }
+  html += `<div class="dp-cal-title">${MONTHS_PT[month]} ${year}</div>`;
+  if (!showPrev) {
+    html += `<button class="dp-nav" onclick="dpNav(1)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg></button>`;
+  } else { html += `<div style="width:28px"></div>`; }
+  html += `</div><div class="dp-grid">`;
+
+  // Day headers
+  DAYS_PT.forEach(d => { html += `<div class="dp-dow">${d}</div>`; });
+
+  // Empty cells
+  for (let i = 0; i < offset; i++) html += `<div class="dp-empty dp-day"></div>`;
+
+  // Days
+  for (let d = 1; d <= daysInMonth; d++) {
+    const iso = `${year}-${String(month+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+    let cls = "dp-day";
+    if (iso === todayISO) cls += " dp-today";
+    if (from && to) {
+      if (iso === from || iso === to) cls += " dp-range-start dp-range-end";
+      else if (iso > from && iso < to) cls += " dp-in-range";
+    } else if (iso === from) { cls += " dp-range-start dp-range-end"; }
+    html += `<div class="${cls}" onclick="dpClickDay('${iso}')">${d}</div>`;
+  }
+  html += `</div>`;
+  el.innerHTML = html;
+}
+
+// ============================================================
 // GOOGLE APPS SCRIPT SYNC
 // ============================================================
+
+// ← Cole aqui a URL do Apps Script para todos já sincronizarem automaticamente
+const FIXED_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz-4CD-SPgc6c95UxJ_6tVzxWE_oT1TW5eqHtt6GMDNkcoXx3gag3pd5RFgpTyNrmxY/exec";
+
+function getScriptUrl() {
+  return FIXED_SCRIPT_URL || getScriptUrl() || "";
+}
+
 let autoSyncTimer = null;
 
 function openConfig() {
-  const saved = localStorage.getItem("scriptUrl") || "";
+  const saved = getScriptUrl();
   const interval = localStorage.getItem("syncInterval") || "5";
   const autoOn = localStorage.getItem("autoSync") !== "false";
   document.getElementById("scriptUrlInput").value = saved;
@@ -1091,7 +1414,7 @@ function setLabel(text, isError) {
 }
 
 async function syncNow() {
-  const url = localStorage.getItem("scriptUrl");
+  const url = getScriptUrl();
   if (!url) {
     openConfig();
     return;
@@ -1114,8 +1437,10 @@ async function syncNow() {
     // Atualiza range de datas com os novos dados
     const dates = state.meta.map(r => r[0]).sort();
     if (dates.length) {
-      document.getElementById("dateFrom").value = dates[0];
-      document.getElementById("dateTo").value = dates[dates.length - 1];
+      const from = dates[0], to = dates[dates.length - 1];
+      document.getElementById("dateFrom").value = from;
+      document.getElementById("dateTo").value = to;
+      updateTriggerLabel(from, to);
     }
 
     const now = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
@@ -1133,7 +1458,7 @@ async function syncNow() {
 function scheduleAutoSync() {
   if (autoSyncTimer) clearInterval(autoSyncTimer);
   const autoOn = localStorage.getItem("autoSync") !== "false";
-  const url = localStorage.getItem("scriptUrl");
+  const url = getScriptUrl();
   if (!autoOn || !url) return;
   const minutes = parseInt(localStorage.getItem("syncInterval") || "5");
   autoSyncTimer = setInterval(syncNow, minutes * 60 * 1000);
@@ -1144,16 +1469,17 @@ function scheduleAutoSync() {
 // ============================================================
 (function() {
   const dates = state.meta.map(r=>r[0]).sort();
-  if (dates.length) {
-    document.getElementById("dateFrom").value = dates[0];
-    document.getElementById("dateTo").value = dates[dates.length-1];
-  }
+  const from = dates.length ? dates[0]               : today();
+  const to   = dates.length ? dates[dates.length - 1] : today();
+  document.getElementById("dateFrom").value = from;
+  document.getElementById("dateTo").value   = to;
+  updateTriggerLabel(from, to);
 
   // Restaura config salva e dispara sync automático se configurado
-  const savedUrl = localStorage.getItem("scriptUrl");
+  const savedUrl = getScriptUrl();
   if (savedUrl) {
     scheduleAutoSync();
-    syncNow(); // sincroniza imediatamente ao abrir
+    syncNow();
   } else {
     setLabel("Dados locais · Clique em Configurar para conectar ao Drive");
   }
