@@ -237,9 +237,8 @@
   .table-count { font-size: 12px; color: var(--text-secondary); }
 
   .table-wrap { overflow-x: auto; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-
   thead th {
+    position: relative;
     padding: 10px 14px;
     text-align: right;
     font-size: 11px;
@@ -252,11 +251,34 @@
     background: #FAFBFF;
     cursor: pointer;
     user-select: none;
+    overflow: hidden;
   }
-  thead th:first-child { text-align: left; padding-left: 22px; min-width: 220px; }
+  thead th:first-child { text-align: left; padding-left: 22px; }
   thead th:hover { background: #F0F2F8; }
   thead th.sorted { color: var(--blue); background: var(--blue-light); }
   thead th.vsl-col { color: #7C3AED; }
+
+  .resize-handle {
+    position: absolute;
+    right: 0; top: 0; bottom: 0;
+    width: 6px;
+    cursor: col-resize;
+    z-index: 2;
+  }
+  .resize-handle::after {
+    content: "";
+    position: absolute;
+    right: 2px; top: 20%; bottom: 20%;
+    width: 2px;
+    border-radius: 1px;
+    background: var(--border);
+    transition: background .15s;
+  }
+  .resize-handle:hover::after,
+  .resize-handle.dragging::after { background: var(--blue); }
+
+  table { table-layout: fixed; width: 100%; border-collapse: collapse; font-size: 13px; }
+  td:first-child { overflow: hidden; text-overflow: ellipsis; }
 
   tbody tr { border-bottom: 1px solid #F5F6FA; cursor: pointer; transition: background .12s; }
   tbody tr:hover { background: #F8F9FF; }
@@ -639,7 +661,8 @@
         </div>
       </div>
       <div class="table-wrap">
-        <table>
+        <table id="mainTable">
+          <colgroup id="colgroup"></colgroup>
           <thead id="thead"></thead>
           <tbody id="tbody"></tbody>
         </table>
@@ -814,6 +837,15 @@ const CAMPAIGN_NAMES = {
   C3: "[C3] 9 CRIATIVOS — 18/06/26",
 };
 const CAMP_COLORS = { C1:"#4263EB", C2:"#7C3AED", C3:"#0891B2" };
+function campColor(key) {
+  if (CAMP_COLORS[key]) return CAMP_COLORS[key];
+  const m = String(key).match(/\[(C\d+)\]/);
+  return m ? (CAMP_COLORS[m[1]] || PANEL_COLORS[0]) : PANEL_COLORS[0];
+}
+function campInitials(key) {
+  const m = String(key).match(/\[(C\d+)\]/);
+  return m ? m[1] : String(key).substring(0, 2).toUpperCase();
+}
 const PANEL_COLORS = ["#4263EB","#7C3AED","#0891B2","#D97706","#059669","#DC2626","#8B5CF6","#EC4899"];
 
 // ============================================================
@@ -888,6 +920,72 @@ const COLS_VSL = [
   { key:"vslTaxaPitchCO",   label:"Pitch × Checkout",       fmt:fPct, vsl:true },
   { key:"vslTaxaPlaysCO",   label:"Plays × Checkout",       fmt:fPct, vsl:true },
 ];
+
+// ============================================================
+// COLUMN RESIZE
+// ============================================================
+const COL_WIDTHS_KEY = "colWidths_v2";
+let _colWidths = {};
+try { _colWidths = JSON.parse(localStorage.getItem(COL_WIDTHS_KEY) || "{}"); } catch(e) {}
+
+function saveColWidths() {
+  try { localStorage.setItem(COL_WIDTHS_KEY, JSON.stringify(_colWidths)); } catch(e) {}
+}
+
+function defaultColWidth(col) {
+  if (col.left)          return 260;
+  if (col.fmt === fBRL)  return 100;
+  if (col.fmt === fPct)  return 85;
+  return 88;
+}
+
+function applyColWidths(cols, panelKey) {
+  // Rebuild colgroup
+  const cg = document.getElementById("colgroup");
+  cg.innerHTML = cols.map(col => {
+    const w = _colWidths[panelKey + "_" + col.key] || defaultColWidth(col);
+    return `<col style="width:${w}px">`;
+  }).join("");
+
+  // Apply width to each th and attach resize handle
+  const ths = document.getElementById("thead").querySelectorAll("th");
+  ths.forEach((th, i) => {
+    const col = cols[i];
+    if (!col) return;
+    const w = _colWidths[panelKey + "_" + col.key] || defaultColWidth(col);
+    th.style.width = w + "px";
+
+    const handle = document.createElement("div");
+    handle.className = "resize-handle";
+    handle.addEventListener("click", e => e.stopPropagation());
+    handle.addEventListener("mousedown", e => {
+      e.preventDefault();
+      e.stopPropagation();
+      handle.classList.add("dragging");
+      const startX = e.clientX;
+      const startW = th.offsetWidth;
+
+      const onMove = mv => {
+        const newW = Math.max(48, startW + mv.clientX - startX);
+        th.style.width = newW + "px";
+        const colEl = cg.children[i];
+        if (colEl) colEl.style.width = newW + "px";
+      };
+      const onUp = up => {
+        handle.classList.remove("dragging");
+        const newW = Math.max(48, startW + up.clientX - startX);
+        _colWidths[panelKey + "_" + col.key] = newW;
+        saveColWidths();
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    });
+
+    th.appendChild(handle);
+  });
+}
 
 // ============================================================
 // METRICS CALCULATION
@@ -1181,7 +1279,7 @@ function renderCampaigns() {
   // Breadcrumb
   let bcHtml = `<span class="bc-item ${ps.level===1?'active':''}" onclick="drillUp('campaigns',1)">Campanhas</span>`;
   if (ps.l1) {
-    const nm = CAMPAIGN_NAMES[ps.l1] || ps.l1;
+    const nm = ps.l1;
     bcHtml += `<span class="bc-sep">›</span><span class="bc-item ${ps.level===2?'active':''}" onclick="drillUp('campaigns',2)">${esc(nm)}</span>`;
   }
   if (ps.l2) {
@@ -1200,8 +1298,8 @@ function renderCampaigns() {
   if (ps.level === 1) {
     groups = groupByKey(nav.meta, nav.sales, r=>r[2], r=>r[3]).map(g => ({
       key: g.key, metrics: calcMetrics(g.meta, g.sales),
-      displayName: CAMPAIGN_NAMES[g.key] || g.key,
-      color: CAMP_COLORS[g.key] || "#4263EB", initials: g.key,
+      displayName: g.key,
+      color: campColor(g.key), initials: campInitials(g.key),
     }));
   } else if (ps.level === 2) {
     groups = groupByKey(nav.meta, nav.sales, r=>(r[11]||r[1]), r=>(r[8]||r[4])).map((g,i) => ({
@@ -1217,7 +1315,7 @@ function renderCampaigns() {
 
   const levelNames = ["Campanhas","Conjuntos de Anúncios","Anúncios"];
   renderKPIs(totalM);
-  renderTableWithCols(groups, totalM, COLS_BASE, levelNames[ps.level - 1], ps.level < 3);
+  renderTableWithCols(groups, totalM, COLS_BASE, levelNames[ps.level - 1], ps.level < 3, false, "camp");
 }
 
 // ── Funis ──────────────────────────────────────────────────
@@ -1269,7 +1367,7 @@ function renderFunnels() {
   const cols = showVSL ? [...COLS_BASE, ...COLS_VSL] : COLS_BASE;
   const levelNames = ["Funis","Conjuntos de Anúncios","Anúncios"];
   renderKPIs(totalM);
-  renderTableWithCols(groups, totalM, cols, levelNames[ps.level - 1], ps.level < 3, showVSL);
+  renderTableWithCols(groups, totalM, cols, levelNames[ps.level - 1], ps.level < 3, showVSL, "funis");
 }
 
 // ── Criativos ──────────────────────────────────────────────
@@ -1288,7 +1386,7 @@ function renderCreatives() {
   }));
 
   renderKPIs(totalM);
-  renderTableWithCols(groups, totalM, COLS_BASE, "Criativos", false);
+  renderTableWithCols(groups, totalM, COLS_BASE, "Criativos", false, false, "cria");
 }
 
 // ── Shared Renders ─────────────────────────────────────────
@@ -1328,7 +1426,7 @@ function renderKPIs(m) {
     </div>`).join("");
 }
 
-function renderTableWithCols(groups, totalMetrics, cols, sectionName, canDrill, hasVSL) {
+function renderTableWithCols(groups, totalMetrics, cols, sectionName, canDrill, hasVSL, panelKey) {
   // Sort
   const sorted = [...groups].sort((a, b) => {
     if (state.sortCol === "name") return state.sortDir * a.displayName.localeCompare(b.displayName);
@@ -1357,6 +1455,7 @@ function renderTableWithCols(groups, totalMetrics, cols, sectionName, canDrill, 
   }
 
   document.getElementById("thead").innerHTML = `<tr>${baseHead}${vslHead}</tr>`;
+  applyColWidths(cols, panelKey);
 
   // BODY
   const tbody = document.getElementById("tbody");
@@ -1463,7 +1562,7 @@ function parseMetaSheet(rows) {
     out.push([
       toISO(r[gi(iDt, 0)]),
       extractAd(adName),
-      extractCamp(r[gi(iNca, 2)]),
+      String(r[gi(iNca, 2)]||"").trim(),
       spend,
       +r[gi(iImp, 5)]||0,
       +r[gi(iClk, 6)]||0,
@@ -1509,7 +1608,7 @@ function parseSalesSheet(rows) {
       toISO(r[gi(iDt, 4)]),
       PMAP[String(r[gi(iPrd, 1)]||"").trim()] || "other",
       src,
-      extractCamp(r[gi(iNca, 6)]),
+      String(r[gi(iNca, 6)]||"").trim(),
       extractAd(r[gi(iNad, 8)]),
       val,
       funnelId,
