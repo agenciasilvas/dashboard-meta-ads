@@ -1551,8 +1551,8 @@ const PRESETS = [
   { label:"Últimos 14 dias",fn:()=>[addDays(today(),-13),today()] },
   { label:"Últimos 28 dias",fn:()=>[addDays(today(),-27),today()] },
   { label:"Últimos 30 dias",fn:()=>[addDays(today(),-29),today()] },
-  { label:"Esta semana",    fn:()=>{ const d=new Date(today()); d.setDate(d.getDate()-d.getDay()+1); return [fmt(d),today()]; } },
-  { label:"Semana passada", fn:()=>{ const d=new Date(today()); const dow=d.getDay()||7; d.setDate(d.getDate()-dow-6); const e=new Date(d); e.setDate(e.getDate()+6); return [fmt(d),fmt(e)]; } },
+  { label:"Esta semana",    fn:()=>{ const d=new Date(); d.setDate(d.getDate()-d.getDay()); return [fmt(d),today()]; } },
+  { label:"Semana passada", fn:()=>{ const d=new Date(); const dow=d.getDay(); const sun=new Date(d); sun.setDate(d.getDate()-dow-7); const sat=new Date(d); sat.setDate(d.getDate()-dow-1); return [fmt(sun),fmt(sat)]; } },
   { label:"Este mês",       fn:()=>{ const d=new Date(today()); d.setDate(1); return [fmt(d),today()]; } },
   { label:"Mês passado",    fn:()=>{ const d=new Date(today()); d.setDate(0); const e=fmt(d); d.setDate(1); return [fmt(d),e]; } },
   { label:"Máximo",         fn:()=>{ const all=state.meta.map(r=>r[0]).sort(); return all.length?[all[0],all[all.length-1]]:[today(),today()]; } },
@@ -1568,7 +1568,13 @@ function fmt(d)  {
   const day = String(d.getDate()).padStart(2,"0");
   return `${y}-${m}-${day}`;
 }
-function addDays(iso,n) { const d=new Date(iso); d.setDate(d.getDate()+n); return fmt(d); }
+function addDays(iso, n) {
+  // Usa construtor local para evitar deslocamento UTC
+  const [y, mo, d] = iso.split("-").map(Number);
+  const date = new Date(y, mo - 1, d);
+  date.setDate(date.getDate() + n);
+  return fmt(date);
+}
 function parseISO(s) { const [y,m,d]=s.split("-"); return new Date(+y,+m-1,+d); }
 function fmtDisplay(iso) {
   if (!iso) return "—";
@@ -1609,6 +1615,7 @@ function dpApply() {
   document.getElementById("dateFrom").value=from;
   document.getElementById("dateTo").value=to;
   updateTriggerLabel(from,to);
+  localStorage.setItem("dateRange", JSON.stringify({from,to}));
   dpCancel(); render();
 }
 function updateTriggerLabel(from,to) {
@@ -1716,12 +1723,6 @@ async function syncNow() {
     state.meta  = data.meta  || [];
     state.sales = data.sales || [];
     state.vturb = data.vturb || [];
-    const dates = state.meta.map(r=>r[0]).sort();
-    if (dates.length) {
-      document.getElementById("dateFrom").value = dates[0];
-      document.getElementById("dateTo").value   = dates[dates.length-1];
-      updateTriggerLabel(dates[0], dates[dates.length-1]);
-    }
     const now = new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
     setLabel("Sincronizado às " + now + (data.sheetName ? " · " + data.sheetName : ""));
     render();
@@ -1739,9 +1740,15 @@ function scheduleAutoSync() {
 // INIT
 // ============================================================
 (function() {
-  const dates = state.meta.map(r=>r[0]).sort();
-  const from  = dates.length ? dates[0]               : today();
-  const to    = dates.length ? dates[dates.length - 1] : today();
+  // Restaura última seleção de data; default = Esta semana (domingo a hoje)
+  let from, to;
+  try {
+    const saved = JSON.parse(localStorage.getItem("dateRange") || "null");
+    if (saved && saved.from && saved.to) { from = saved.from; to = saved.to; }
+  } catch(e) {}
+  if (!from || !to) {
+    [from, to] = PRESETS.find(p => p.label === "Esta semana").fn();
+  }
   document.getElementById("dateFrom").value = from;
   document.getElementById("dateTo").value   = to;
   updateTriggerLabel(from, to);
