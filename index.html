@@ -1782,7 +1782,7 @@ function renderCalMonth(elId,year,month,showPrev) {
 // ============================================================
 const FIXED_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz-4CD-SPgc6c95UxJ_6tVzxWE_oT1TW5eqHtt6GMDNkcoXx3gag3pd5RFgpTyNrmxY/exec";
 
-function getScriptUrl() { return FIXED_SCRIPT_URL || localStorage.getItem("scriptUrl") || ""; }
+function getScriptUrl() { return localStorage.getItem("scriptUrl") || FIXED_SCRIPT_URL || ""; }
 
 let autoSyncTimer = null;
 
@@ -1810,23 +1810,42 @@ function setSyncLoading(l) {
 function setLabel(t, isErr) {
   const el = document.getElementById("syncLabel"); el.textContent = t; el.style.color = isErr ? "var(--red)" : "";
 }
-async function syncNow() {
+function syncNow() {
   const url = getScriptUrl();
   if (!url) { openConfig(); return; }
   setSyncLoading(true); setLabel("Sincronizando…");
-  try {
-    const res = await fetch(url, { redirect:"follow" });
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
+
+  const cbName = "__dsSync" + Date.now();
+  const script = document.createElement("script");
+  script.src = url + "?callback=" + cbName;
+
+  const timer = setTimeout(() => {
+    cleanup(); setLabel("Erro: timeout (30s)", true); setSyncLoading(false);
+  }, 30000);
+
+  function cleanup() {
+    clearTimeout(timer);
+    delete window[cbName];
+    if (script.parentNode) script.parentNode.removeChild(script);
+  }
+
+  window[cbName] = function(data) {
+    cleanup();
+    if (data.error) { setLabel("Erro: " + data.error, true); setSyncLoading(false); return; }
     state.meta  = data.meta  || [];
     state.sales = data.sales || [];
     state.vturb = data.vturb || [];
     const now = new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
     setLabel("Sincronizado às " + now + (data.sheetName ? " · " + data.sheetName : ""));
+    setSyncLoading(false);
     render();
-  } catch(err) { setLabel("Erro: " + err.message, true); }
-  finally { setSyncLoading(false); }
+  };
+
+  script.onerror = () => {
+    cleanup(); setLabel("Erro: falha ao carregar script", true); setSyncLoading(false);
+  };
+
+  document.head.appendChild(script);
 }
 function scheduleAutoSync() {
   if (autoSyncTimer) clearInterval(autoSyncTimer);
