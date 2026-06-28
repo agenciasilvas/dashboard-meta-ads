@@ -1270,12 +1270,6 @@ function setPanel(panel) {
   updateSidebarActive();
   updateTopbarTitle();
   filterUpdateBadge();
-  // Mostrar/ocultar painel de notas vs painel de tabela
-  const isNotes = panel === "notes";
-  document.getElementById("notesView").classList.toggle("active", isNotes);
-  document.getElementById("tableCard").style.display = isNotes ? "none" : "";
-  document.getElementById("kpiGrid").style.display   = isNotes ? "none" : "";
-  document.getElementById("filterBtn") && (document.getElementById("filterBtn").style.display = isNotes ? "none" : "");
   render();
 }
 
@@ -1459,6 +1453,16 @@ function filterRenderList() {
 // ============================================================
 function render() {
   const panel = state.activePanel;
+  const isNotes = panel === "notes";
+
+  // Visibilidade: notas vs painéis com tabela
+  document.getElementById("notesView").classList.toggle("active", isNotes);
+  const tc = document.getElementById("tableCard");
+  if (tc) tc.style.display = isNotes ? "none" : "";
+  document.getElementById("kpiGrid").style.display = isNotes ? "none" : "";
+  const fb = document.getElementById("filterBtn");
+  if (fb) fb.style.display = isNotes ? "none" : "";
+
   if (panel === "campaigns") renderCampaigns();
   else if (panel === "funnels") renderFunnels();
   else if (panel === "notes") renderNotes();
