@@ -217,6 +217,99 @@
   .kpi-value { font-size: 26px; font-weight: 800; color: var(--text); line-height: 1.1; }
   .kpi-sub { font-size: 12px; color: var(--text-secondary); }
 
+  /* ─── NOTES PANEL ──────────────────────────────── */
+  #notesView { display: none; flex-direction: column; gap: 14px; }
+  #notesView.active { display: flex; }
+
+  .note-card {
+    background: var(--white);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .note-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .note-date {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .note-date-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--blue); display: inline-block;
+  }
+  .note-metrics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .note-metric {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    background: #F7F8FF;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 5px 12px;
+    min-width: 72px;
+  }
+  .note-metric-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+  }
+  .note-metric-value {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .note-metric-value.blue  { color: var(--blue); }
+  .note-metric-value.green { color: #059669; }
+  .note-metric-value.amber { color: #D97706; }
+  .note-metric-value.red   { color: #DC2626; }
+  .note-body {
+    padding: 14px 20px;
+  }
+  .note-text-label {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+  }
+  .note-text {
+    font-size: 13px;
+    color: var(--text);
+    line-height: 1.6;
+    white-space: pre-wrap;
+  }
+  .note-empty {
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-style: italic;
+  }
+  .notes-empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-secondary);
+    font-size: 14px;
+  }
+
   /* ─── TABLE CARD ─────────────────────────────── */
   .table-card {
     background: var(--white);
@@ -538,6 +631,10 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
     <span class="tooltip">Criativos</span>
   </button>
+  <button class="nav-btn" id="nav-notes" onclick="setPanel('notes')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+    <span class="tooltip">Anotações</span>
+  </button>
 
   <div class="sidebar-bottom">
     <div class="sidebar-divider"></div>
@@ -669,7 +766,8 @@
     <div class="breadcrumb" id="breadcrumb"></div>
     <div class="tabs" id="tabsBar"></div>
     <div class="kpi-grid" id="kpiGrid"></div>
-    <div class="table-card">
+    <div id="notesView"></div>
+    <div class="table-card" id="tableCard">
       <div class="table-header">
         <div class="table-header-left">
           <div class="table-title" id="tableTitle"></div>
@@ -872,6 +970,7 @@ let state = {
   meta:  [...RAW_META],
   sales: [...RAW_SALES],
   vturb: [...RAW_VTURB],
+  notes: [],
   activePanel: "campaigns",
   panels: {
     campaigns: { level: 1, l1: null, l2: null, filter: new Set(), search: "", sel: [new Set(), new Set(), new Set()], onlySel: false },
@@ -1171,6 +1270,12 @@ function setPanel(panel) {
   updateSidebarActive();
   updateTopbarTitle();
   filterUpdateBadge();
+  // Mostrar/ocultar painel de notas vs painel de tabela
+  const isNotes = panel === "notes";
+  document.getElementById("notesView").classList.toggle("active", isNotes);
+  document.getElementById("tableCard").style.display = isNotes ? "none" : "";
+  document.getElementById("kpiGrid").style.display   = isNotes ? "none" : "";
+  document.getElementById("filterBtn") && (document.getElementById("filterBtn").style.display = isNotes ? "none" : "");
   render();
 }
 
@@ -1244,13 +1349,13 @@ function sortBy(col) {
 }
 
 function updateSidebarActive() {
-  ["campaigns","funnels","creatives"].forEach(p => {
+  ["campaigns","funnels","creatives","notes"].forEach(p => {
     document.getElementById("nav-" + p).classList.toggle("active", p === state.activePanel);
   });
 }
 
 function updateTopbarTitle() {
-  const titles = { campaigns:"Campanhas", funnels:"Funis de Marketing", creatives:"Criativos" };
+  const titles = { campaigns:"Campanhas", funnels:"Funis de Marketing", creatives:"Criativos", notes:"Anotações" };
   document.getElementById("topbarTitle").textContent = titles[state.activePanel] || "";
 }
 
@@ -1356,6 +1461,7 @@ function render() {
   const panel = state.activePanel;
   if (panel === "campaigns") renderCampaigns();
   else if (panel === "funnels") renderFunnels();
+  else if (panel === "notes") renderNotes();
   else renderCreatives();
 }
 
@@ -1473,6 +1579,119 @@ function renderCreatives() {
 
   renderKPIs(totalM);
   renderTableWithCols(groups, totalM, COLS_BASE, "Criativos", false, false, "cria");
+}
+
+// ── Anotações ──────────────────────────────────────────────
+function renderNotes() {
+  document.getElementById("breadcrumb").innerHTML = `<span class="bc-item active">Anotações</span>`;
+  document.getElementById("tabsBar").innerHTML = "";
+
+  const { from, to } = getDateRange();
+
+  // Agrupa meta e sales por data
+  const metaByDate = {}, salesByDate = {};
+  for (const r of state.meta) {
+    if ((!from || r[0] >= from) && (!to || r[0] <= to))
+      (metaByDate[r[0]] = metaByDate[r[0]] || []).push(r);
+  }
+  for (const r of state.sales) {
+    if ((!from || r[0] >= from) && (!to || r[0] <= to))
+      (salesByDate[r[0]] = salesByDate[r[0]] || []).push(r);
+  }
+
+  // Notas filtradas por período
+  const notesMap = {};
+  for (const n of state.notes) {
+    if ((!from || n[0] >= from) && (!to || n[0] <= to))
+      notesMap[n[0]] = n[1];
+  }
+
+  // Todos os dias com dados
+  const allDates = [...new Set([
+    ...Object.keys(metaByDate),
+    ...Object.keys(salesByDate),
+    ...Object.keys(notesMap),
+  ])].sort((a, b) => b.localeCompare(a)); // mais recente primeiro
+
+  const view = document.getElementById("notesView");
+
+  if (!allDates.length) {
+    view.innerHTML = `<div class="notes-empty-state">Nenhum dado encontrado para o período selecionado.</div>`;
+    return;
+  }
+
+  const DAYS_PT = ["Domingo","Segunda","Terça","Quarta","Quinta","Sexta","Sábado"];
+
+  function fmtDate(iso) {
+    const [y, m, d] = iso.split("-").map(Number);
+    const dt = new Date(y, m - 1, d);
+    return `${String(d).padStart(2,"0")}/${String(m).padStart(2,"0")}/${y} — ${DAYS_PT[dt.getDay()]}`;
+  }
+
+  function roasClass(v) {
+    return v >= 2 ? "green" : v >= 1 ? "amber" : "red";
+  }
+
+  const cards = allDates.map(date => {
+    const mRows  = metaByDate[date]  || [];
+    const sRows  = salesByDate[date] || [];
+    const note   = notesMap[date]    || "";
+
+    // Métricas do dia
+    const spend = mRows.reduce((s, r) => s + r[3], 0);
+    const funnel    = sRows.filter(r => r[2] === "funnel");
+    const comercial = sRows.filter(r => r[2] === "comercial");
+
+    const mainCount = funnel.filter(r => r[1] === "main").length;
+    const up1Count  = funnel.filter(r => r[1] === "up1").length;
+    const ds1Count  = funnel.filter(r => r[1] === "ds1").length;
+    const up2Count  = funnel.filter(r => r[1] === "up2").length;
+    const ds2Count  = funnel.filter(r => r[1] === "ds2").length;
+
+    const revFunnel = funnel.reduce((s, r) => s + r[5], 0);
+    const revAll    = sRows.reduce((s, r) => s + r[5], 0);
+
+    const cpa        = mainCount > 0 ? spend / mainCount : 0;
+    const ticket     = mainCount > 0 ? revFunnel / mainCount : 0;
+    const roas       = spend > 0 ? revFunnel / spend : 0;
+    const roasTotal  = spend > 0 ? revAll    / spend : 0;
+
+    const m = (label, value, cls) =>
+      `<div class="note-metric">
+        <span class="note-metric-label">${label}</span>
+        <span class="note-metric-value ${cls||""}">${value}</span>
+      </div>`;
+
+    const metrics = [
+      m("Invest",    fBRL(spend),                      "blue"),
+      m("PP",        mainCount,                        ""),
+      m("Up1",       up1Count,                         ""),
+      m("DS1",       ds1Count,                         ""),
+      m("Up2",       up2Count,                         ""),
+      m("DS2",       ds2Count,                         ""),
+      m("CPA",       mainCount > 0 ? fBRL(cpa) : "—", ""),
+      m("Ticket",    mainCount > 0 ? fBRL(ticket) : "—", ""),
+      m("ROAS",      spend > 0 ? roas.toFixed(2).replace(".",",")+`x` : "—", roasClass(roas)),
+      m("ROAS Total",spend > 0 ? roasTotal.toFixed(2).replace(".",",")+`x` : "—", roasClass(roasTotal)),
+    ].join("");
+
+    const noteHtml = note
+      ? `<div class="note-body">
+           <div class="note-text-label">Anotação</div>
+           <div class="note-text">${esc(note)}</div>
+         </div>`
+      : `<div class="note-body"><span class="note-empty">Sem anotação para este dia.</span></div>`;
+
+    return `<div class="note-card">
+      <div class="note-card-header">
+        <span class="note-date"><span class="note-date-dot"></span>${fmtDate(date)}</span>
+        <div class="note-metrics">${metrics}</div>
+      </div>
+      ${noteHtml}
+    </div>`;
+  }).join("");
+
+  view.innerHTML = cards;
 }
 
 // ── Shared Renders ─────────────────────────────────────────
@@ -1965,6 +2184,7 @@ function syncNow() {
     state.meta  = data.meta  || [];
     state.sales = data.sales || [];
     state.vturb = data.vturb || [];
+    state.notes = data.notes || [];
     const now = new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
     setLabel("Sincronizado às " + now + (data.sheetName ? " · " + data.sheetName : ""));
     setSyncLoading(false);
