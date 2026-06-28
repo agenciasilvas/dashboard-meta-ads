@@ -1379,7 +1379,7 @@ function renderCampaigns() {
 
   // Tabs — qualquer direção
   const tabLabels = ["Campanhas","Conjuntos de Anúncios","Anúncios"];
-  renderTabs(tabLabels, ps.level - 1, i => goToLevel("campaigns", i + 1));
+  renderTabs(tabLabels, ps.level - 1, "campaigns");
 
   // Group
   let groups;
@@ -1424,7 +1424,7 @@ function renderFunnels() {
   document.getElementById("breadcrumb").innerHTML = bcHtml;
 
   const tabLabels = ["Funis","Conjuntos de Anúncios","Anúncios"];
-  renderTabs(tabLabels, ps.level - 1, i => goToLevel("funnels", i + 1));
+  renderTabs(tabLabels, ps.level - 1, "funnels");
 
   let groups;
   const showVSL = ps.level === 1;
@@ -1476,9 +1476,9 @@ function renderCreatives() {
 }
 
 // ── Shared Renders ─────────────────────────────────────────
-function renderTabs(labels, activeIdx, onClick) {
+function renderTabs(labels, activeIdx, panelId) {
   document.getElementById("tabsBar").innerHTML = labels.map((l, i) =>
-    `<button class="tab ${i===activeIdx?'active':''}" onclick="(${onClick.toString()})(${i})">${l}</button>`
+    `<button class="tab ${i===activeIdx?'active':''}" onclick="goToLevel('${panelId}',${i+1})">${l}</button>`
   ).join("");
 }
 
