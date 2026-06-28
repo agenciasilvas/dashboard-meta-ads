@@ -257,6 +257,22 @@
   thead th:hover { background: #F0F2F8; }
   thead th.sorted { color: var(--blue); background: var(--blue-light); }
   thead th.vsl-col { color: #7C3AED; }
+  thead th { position: sticky; top: 0; z-index: 2; }
+
+  /* Checkbox column */
+  .cb-col { width: 36px !important; min-width: 36px !important; max-width: 36px !important; padding: 0 !important; text-align: center !important; }
+  .cb-col input[type=checkbox] { cursor: pointer; width: 15px; height: 15px; accent-color: var(--blue); }
+
+  /* Fixed height scroll */
+  .table-wrap { overflow-x: auto; overflow-y: auto; max-height: 326px; }
+
+  /* Selection actions bar */
+  .sel-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .sel-badge { font-size: 12px; font-weight: 600; color: var(--blue); background: var(--blue-light); border-radius: 6px; padding: 3px 8px; }
+  .sel-only-btn { font-size: 12px; font-weight: 600; border: 1.5px solid var(--border); border-radius: 6px; padding: 3px 10px; cursor: pointer; background: white; color: var(--text-secondary); transition: all .15s; }
+  .sel-only-btn.active { background: var(--blue); color: white; border-color: var(--blue); }
+  .sel-clear-btn { font-size: 12px; color: var(--text-secondary); cursor: pointer; background: none; border: none; padding: 3px 6px; border-radius: 6px; }
+  .sel-clear-btn:hover { background: #F0F2F8; color: var(--text); }
 
   .resize-handle {
     position: absolute;
@@ -659,6 +675,7 @@
           <div class="table-title" id="tableTitle"></div>
           <div class="table-count" id="tableCount"></div>
         </div>
+        <div id="selActionsBar"></div>
       </div>
       <div class="table-wrap">
         <table id="mainTable">
@@ -857,8 +874,8 @@ let state = {
   vturb: [...RAW_VTURB],
   activePanel: "campaigns",
   panels: {
-    campaigns: { level: 1, l1: null, l2: null, filter: new Set(), search: "" },
-    funnels:   { level: 1, l1: null, l2: null, filter: new Set(), search: "" },
+    campaigns: { level: 1, l1: null, l2: null, filter: new Set(), search: "", sel: [new Set(), new Set(), new Set()], onlySel: false },
+    funnels:   { level: 1, l1: null, l2: null, filter: new Set(), search: "", sel: [new Set(), new Set(), new Set()], onlySel: false },
     creatives: { filter: new Set(), search: "" },
   },
   sortCol: "spend",
@@ -939,18 +956,21 @@ function defaultColWidth(col) {
   return 88;
 }
 
-function applyColWidths(cols, panelKey) {
-  // Rebuild colgroup
+function applyColWidths(cols, panelKey, cbOffset) {
+  cbOffset = cbOffset || 0;
+  // Rebuild colgroup — checkbox cols first (fixed 36px), then data cols
   const cg = document.getElementById("colgroup");
-  cg.innerHTML = cols.map(col => {
+  const cbCols = '<col style="width:36px">'.repeat(cbOffset);
+  cg.innerHTML = cbCols + cols.map(col => {
     const w = _colWidths[panelKey + "_" + col.key] || defaultColWidth(col);
     return `<col style="width:${w}px">`;
   }).join("");
 
-  // Apply width to each th and attach resize handle
+  // Apply width to each th and attach resize handle (skip checkbox ths)
   const ths = document.getElementById("thead").querySelectorAll("th");
   ths.forEach((th, i) => {
-    const col = cols[i];
+    if (i < cbOffset) { th.style.width = "36px"; return; } // checkbox col — no resize
+    const col = cols[i - cbOffset];
     if (!col) return;
     const w = _colWidths[panelKey + "_" + col.key] || defaultColWidth(col);
     th.style.width = w + "px";
@@ -968,7 +988,7 @@ function applyColWidths(cols, panelKey) {
       const onMove = mv => {
         const newW = Math.max(48, startW + mv.clientX - startX);
         th.style.width = newW + "px";
-        const colEl = cg.children[i];
+        const colEl = cg.children[i]; // i already includes cbOffset from ths.forEach index
         if (colEl) colEl.style.width = newW + "px";
       };
       const onUp = up => {
@@ -1083,17 +1103,41 @@ function applyNavFilter(meta, sales, vturb) {
   const ps    = state.panels[panel];
 
   if (panel === "campaigns") {
-    if (ps.l1) { meta  = meta.filter(r  => r[2]  === ps.l1); sales = sales.filter(r => r[3] === ps.l1); }
-    if (ps.l2) { meta  = meta.filter(r  => (r[11]||r[1]) === ps.l2); sales = sales.filter(r => (r[8]||r[4]) === ps.l2); }
+    // L1 filter: drill-down (ps.l1 set) OR tab-nav with selections
+    if (ps.l1) {
+      meta  = meta.filter(r => r[2] === ps.l1);
+      sales = sales.filter(r => r[3] === ps.l1);
+    } else if (ps.level > 1 && ps.sel[0].size > 0) {
+      meta  = meta.filter(r => ps.sel[0].has(r[2]));
+      sales = sales.filter(r => ps.sel[0].has(r[3]));
+    }
+    // L2 filter
+    if (ps.l2) {
+      meta  = meta.filter(r => (r[11]||r[1]) === ps.l2);
+      sales = sales.filter(r => (r[8]||r[4]) === ps.l2);
+    } else if (ps.level > 2 && ps.sel[1].size > 0) {
+      meta  = meta.filter(r => ps.sel[1].has(r[11]||r[1]));
+      sales = sales.filter(r => ps.sel[1].has(r[8]||r[4]));
+    }
   }
   if (panel === "funnels") {
     if (ps.l1) {
       const k = ps.l1;
-      meta  = meta.filter(r  => (r[9] ||"(sem funil)") === k);
-      sales = sales.filter(r => (r[6] ||"(sem funil)") === k);
-      vturb = vturb.filter(r => (r[1] ||"(sem funil)") === k);
+      meta  = meta.filter(r => (r[9]||"(sem funil)") === k);
+      sales = sales.filter(r => (r[6]||"(sem funil)") === k);
+      vturb = vturb.filter(r => (r[1]||"(sem funil)") === k);
+    } else if (ps.level > 1 && ps.sel[0].size > 0) {
+      meta  = meta.filter(r => ps.sel[0].has(r[9]||"(sem funil)"));
+      sales = sales.filter(r => ps.sel[0].has(r[6]||"(sem funil)"));
+      vturb = vturb.filter(r => ps.sel[0].has(r[1]||"(sem funil)"));
     }
-    if (ps.l2) { meta  = meta.filter(r  => (r[11]||r[1]) === ps.l2); sales = sales.filter(r => (r[8]||r[4]) === ps.l2); }
+    if (ps.l2) {
+      meta  = meta.filter(r => (r[11]||r[1]) === ps.l2);
+      sales = sales.filter(r => (r[8]||r[4]) === ps.l2);
+    } else if (ps.level > 2 && ps.sel[1].size > 0) {
+      meta  = meta.filter(r => ps.sel[1].has(r[11]||r[1]));
+      sales = sales.filter(r => ps.sel[1].has(r[8]||r[4]));
+    }
   }
 
   return { meta, sales, vturb };
@@ -1144,6 +1188,52 @@ function drillUp(panel, toLevel) {
   ps.level = toLevel;
   if (toLevel <= 1) { ps.l1 = null; ps.l2 = null; }
   else if (toLevel === 2) ps.l2 = null;
+  render();
+}
+
+function goToLevel(panel, targetLevel) {
+  const ps = state.panels[panel];
+  if (targetLevel === ps.level) return;
+  ps.level = targetLevel;
+  if (targetLevel <= 1) { ps.l1 = null; ps.l2 = null; ps.onlySel = false; }
+  else if (targetLevel === 2) { ps.l2 = null; ps.onlySel = false; }
+  else { ps.onlySel = false; }
+  render();
+}
+
+// ---- Selection helpers ----------------------------------------
+function toggleSel(panelKey, levelIdx, key) {
+  const panelMap = { camp:"campaigns", funis:"funnels" };
+  const ps = state.panels[panelMap[panelKey]];
+  if (!ps || !ps.sel) return;
+  const s = ps.sel[levelIdx];
+  if (s.has(key)) s.delete(key); else s.add(key);
+  render();
+}
+
+function toggleSelAll(panelKey, levelIdx, keys, doSelect) {
+  const panelMap = { camp:"campaigns", funis:"funnels" };
+  const ps = state.panels[panelMap[panelKey]];
+  if (!ps || !ps.sel) return;
+  const s = ps.sel[levelIdx];
+  if (doSelect) keys.forEach(k => s.add(k)); else s.clear();
+  render();
+}
+
+function toggleOnlySel(panelKey) {
+  const panelMap = { camp:"campaigns", funis:"funnels" };
+  const ps = state.panels[panelMap[panelKey]];
+  if (!ps) return;
+  ps.onlySel = !ps.onlySel;
+  render();
+}
+
+function clearSel(panelKey, levelIdx) {
+  const panelMap = { camp:"campaigns", funis:"funnels" };
+  const ps = state.panels[panelMap[panelKey]];
+  if (!ps || !ps.sel) return;
+  ps.sel[levelIdx].clear();
+  ps.onlySel = false;
   render();
 }
 
@@ -1287,11 +1377,9 @@ function renderCampaigns() {
   }
   document.getElementById("breadcrumb").innerHTML = bcHtml;
 
-  // Tabs
+  // Tabs — qualquer direção
   const tabLabels = ["Campanhas","Conjuntos de Anúncios","Anúncios"];
-  renderTabs(tabLabels, ps.level - 1, i => {
-    if (i < ps.level - 1) drillUp("campaigns", i + 1);
-  });
+  renderTabs(tabLabels, ps.level - 1, i => goToLevel("campaigns", i + 1));
 
   // Group
   let groups;
@@ -1304,12 +1392,12 @@ function renderCampaigns() {
   } else if (ps.level === 2) {
     groups = groupByKey(nav.meta, nav.sales, r=>(r[11]||r[1]), r=>(r[8]||r[4])).map((g,i) => ({
       key: g.key, metrics: calcMetrics(g.meta, g.sales),
-      displayName: g.key, color: CAMP_COLORS[ps.l1]||"#4263EB", initials: "CJ",
+      displayName: g.key, color: campColor(ps.l1||""), initials: "CJ",
     }));
   } else {
     groups = groupByKey(nav.meta, nav.sales, r=>r[1], r=>r[4]).map(g => ({
       key: g.key, metrics: calcMetrics(g.meta, g.sales),
-      displayName: "ADS " + g.key, color: CAMP_COLORS[ps.l1]||"#4263EB", initials: "AD",
+      displayName: "ADS " + g.key, color: campColor(ps.l1||""), initials: "AD",
     }));
   }
 
@@ -1336,9 +1424,7 @@ function renderFunnels() {
   document.getElementById("breadcrumb").innerHTML = bcHtml;
 
   const tabLabels = ["Funis","Conjuntos de Anúncios","Anúncios"];
-  renderTabs(tabLabels, ps.level - 1, i => {
-    if (i < ps.level - 1) drillUp("funnels", i + 1);
-  });
+  renderTabs(tabLabels, ps.level - 1, i => goToLevel("funnels", i + 1));
 
   let groups;
   const showVSL = ps.level === 1;
@@ -1427,8 +1513,21 @@ function renderKPIs(m) {
 }
 
 function renderTableWithCols(groups, totalMetrics, cols, sectionName, canDrill, hasVSL, panelKey) {
+  // Resolve panel state for selections
+  const panelMap = { camp:"campaigns", funis:"funnels" };
+  const ps = panelKey && panelMap[panelKey] ? state.panels[panelMap[panelKey]] : null;
+  const hasSel   = !!(ps && ps.sel);
+  const levelIdx = ps ? ps.level - 1 : 0;
+  const selSet   = hasSel ? ps.sel[levelIdx] : null;
+  const onlySel  = hasSel && ps.onlySel;
+
+  // Apply "somente selecionados" filter
+  let displayGroups = onlySel && selSet && selSet.size > 0
+    ? groups.filter(g => selSet.has(g.key))
+    : groups;
+
   // Sort
-  const sorted = [...groups].sort((a, b) => {
+  const sorted = [...displayGroups].sort((a, b) => {
     if (state.sortCol === "name") return state.sortDir * a.displayName.localeCompare(b.displayName);
     return state.sortDir * ((a.metrics[state.sortCol] || 0) - (b.metrics[state.sortCol] || 0));
   });
@@ -1437,36 +1536,66 @@ function renderTableWithCols(groups, totalMetrics, cols, sectionName, canDrill, 
   document.getElementById("tableCount").textContent =
     sorted.length + " " + (sorted.length === 1 ? "item" : "itens") + " encontrados";
 
-  // HEAD
-  let baseHead = cols.filter(c => !c.vsl).map(c => {
+  // Guardar chaves para evitar encoding problemático no onclick
+  window._tblKeys = sorted.map(g => g.key);
+  window._tblSelAll = sorted.map(g => g.key);
+
+  // Selection bar
+  const selBarEl = document.getElementById("selActionsBar");
+  if (selBarEl) {
+    if (hasSel && selSet && selSet.size > 0) {
+      const noun = ["campanhas","conjuntos","anúncios"][levelIdx] || "itens";
+      const isOnly = onlySel;
+      selBarEl.innerHTML =
+        `<div class="sel-bar">
+          <span class="sel-badge">✓ ${selSet.size} ${noun} selecionado${selSet.size>1?"s":""}</span>
+          <button class="sel-only-btn ${isOnly?"active":""}" onclick="toggleOnlySel('${panelKey}')">
+            ${isOnly ? "Ver todos" : "Somente selecionados"}
+          </button>
+          <button class="sel-clear-btn" onclick="clearSel('${panelKey}',${levelIdx})">✕ Limpar</button>
+        </div>`;
+    } else {
+      selBarEl.innerHTML = "";
+    }
+  }
+
+  // HEAD — checkbox col + data cols
+  const allKeys    = window._tblSelAll;
+  const allChecked = hasSel && selSet && allKeys.length > 0 && allKeys.every(k => selSet.has(k));
+  const cbTh = hasSel
+    ? `<th class="cb-col"><input type="checkbox" ${allChecked?"checked":""} onclick="toggleSelAll('${panelKey}',${levelIdx},window._tblSelAll,${!allChecked})"></th>`
+    : "";
+
+  const baseHead = cols.filter(c => !c.vsl).map(c => {
     const s = state.sortCol === c.key;
     const arr = s ? (state.sortDir === -1 ? " ↓" : " ↑") : "";
     const align = c.left ? "text-align:left" : "";
     return `<th class="${s?'sorted':''}" onclick="sortBy('${c.key}')" style="${align}">${c.label}${arr}</th>`;
   }).join("");
 
-  let vslHead = "";
-  if (hasVSL) {
-    const vslCols = cols.filter(c => c.vsl);
-    vslHead = vslCols.map(c => {
-      const s = state.sortCol === c.key;
-      return `<th class="vsl-col ${s?'sorted':''}" onclick="sortBy('${c.key}')">${c.label}</th>`;
-    }).join("");
-  }
+  const vslHead = hasVSL ? cols.filter(c => c.vsl).map(c => {
+    const s = state.sortCol === c.key;
+    return `<th class="vsl-col ${s?'sorted':''}" onclick="sortBy('${c.key}')">${c.label}</th>`;
+  }).join("") : "";
 
-  document.getElementById("thead").innerHTML = `<tr>${baseHead}${vslHead}</tr>`;
-  applyColWidths(cols, panelKey);
+  document.getElementById("thead").innerHTML = `<tr>${cbTh}${baseHead}${vslHead}</tr>`;
+  applyColWidths(cols, panelKey, hasSel ? 1 : 0);
 
   // BODY
   const tbody = document.getElementById("tbody");
+  const colCount = cols.length + (hasSel ? 1 : 0);
   if (!sorted.length) {
-    tbody.innerHTML = `<tr><td colspan="${cols.length}" class="no-data">Nenhum dado encontrado para o período selecionado.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${colCount}" class="no-data">Nenhum dado encontrado para o período selecionado.</td></tr>`;
     return;
   }
 
-  const rowsHtml = sorted.map(row => {
+  const rowsHtml = sorted.map((row, i) => {
     const m = row.metrics;
-    const click = canDrill ? `onclick="drillDown('${row.key.replace(/'/g,"\\'")}')"` : "";
+    const checked = selSet && selSet.has(row.key) ? "checked" : "";
+    const cbTd = hasSel
+      ? `<td class="cb-col" onclick="event.stopPropagation()"><input type="checkbox" ${checked} onchange="toggleSel('${panelKey}',${levelIdx},window._tblKeys[${i}])"></td>`
+      : "";
+    const click = canDrill ? `onclick="drillDown(window._tblKeys[${i}])"` : "";
     const cells = cols.map(c => {
       if (c.key === "name") {
         return `<td><div class="name-chip"><div class="circle" style="background:${row.color}">${esc(row.initials)}</div><span title="${esc(row.displayName)}">${esc(row.displayName)}</span></div></td>`;
@@ -1476,10 +1605,11 @@ function renderTableWithCols(groups, totalMetrics, cols, sectionName, canDrill, 
       if (v == null || (v === 0 && c.key !== "spend")) return `<td class="val-muted">—</td>`;
       return `<td>${c.fmt(v)}</td>`;
     }).join("");
-    return `<tr ${click}>${cells}</tr>`;
+    return `<tr ${click}>${cbTd}${cells}</tr>`;
   }).join("");
 
   // TOTAL ROW
+  const cbTotal = hasSel ? `<td class="cb-col"></td>` : "";
   const totalCells = cols.map(c => {
     if (c.key === "name") return `<td>TOTAL GERAL</td>`;
     const v = totalMetrics[c.key];
@@ -1489,7 +1619,7 @@ function renderTableWithCols(groups, totalMetrics, cols, sectionName, canDrill, 
     return `<td>${c.fmt(v)}</td>`;
   }).join("");
 
-  tbody.innerHTML = rowsHtml + `<tr class="total-row">${totalCells}</tr>`;
+  tbody.innerHTML = rowsHtml + `<tr class="total-row">${cbTotal}${totalCells}</tr>`;
 }
 
 // ============================================================
